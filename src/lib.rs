@@ -73,13 +73,14 @@ impl AuthenticatingRequestBuilder {
                             let body = response.text().await.ok();
                             let mut auth_str = "".to_owned();
 
-                            if let Ok(mut auth) = DigestScheme::parse_authenticate_str(&a) {
+                            if let Ok(mut auth) = a.parse::<DigestScheme>() {
                                 auth_str = auth.generate_auth_string(
                                     self.client.username.as_ref().unwrap(),
                                     self.client.password.as_ref().unwrap(),
                                     "GET",
                                     &url[Position::BeforePath..],
                                     body.as_ref().map(|s| &**s),
+                                    None
                                 );
                             }
                             return self
@@ -104,7 +105,34 @@ impl AuthenticatingRequestBuilder {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn rfc2069() {
+
+        let rfc2069_test = r#"Digest realm="testrealm@host.com", nonce="dcd98b7102dd2f0e8b11d0f600bfb0c093", opaque="5ccc069c403ebaf9f0171e9517f40e41""#;
+        let mut d = rfc2069_test.parse::<crate::digest_authenticator::DigestScheme>().unwrap();
+        let auth_str = d.generate_auth_string("Mufasa", "CircleOfLife", "GET", "/dir/index.html", None, None);
+        assert_eq!(auth_str, r#"Digest username="Mufasa", realm="testrealm@host.com", nonce="dcd98b7102dd2f0e8b11d0f600bfb0c093", uri="/dir/index.html", response="e966c932a9242554e42c8ee200cec7f6", opaque="5ccc069c403ebaf9f0171e9517f40e41""#);
+    }
+
+    #[test]
+    fn rfc2617() {
+        let rfc2617_test = r#"Digest realm="testrealm@host.com", qop="auth", nonce="dcd98b7102dd2f0e8b11d0f600bfb0c093", opaque="5ccc069c403ebaf9f0171e9517f40e41""#;
+        let mut d = rfc2617_test.parse::<crate::digest_authenticator::DigestScheme>().unwrap();
+        let auth_str = d.generate_auth_string("Mufasa", "Circle Of Life", "GET", "/dir/index.html", None, Some("0a4f113b"));
+        assert_eq!(auth_str, r#"Digest username="Mufasa", realm="testrealm@host.com", nonce="dcd98b7102dd2f0e8b11d0f600bfb0c093", uri="/dir/index.html", qop=auth, algorithm=MD5, nc=00000001, cnonce="0a4f113b", response="6629fae49393a05397450978507c4ef1", opaque="5ccc069c403ebaf9f0171e9517f40e41""#);
+    }
+
+    #[test]
+    fn rfc7617() {
+        let rfc7617_test = r#"Digest
+        realm="http-auth@example.org",
+        qop="auth, auth-int",
+        algorithm=SHA-256,
+        nonce="7ypf/xlj9XXwfDPEoM4URrv/xwf94BcCAzFZH4GiTo0v",
+        opaque="FQhe/qaU925kfnzjCev0ciny7QMkPqMAFRtzCUYo5tdS""#;
+
+        let mut d = rfc7617_test.parse::<crate::digest_authenticator::DigestScheme>().unwrap();
+        let auth_str = d.generate_auth_string("Mufasa", "Circle of Life", "GET", "/dir/index.html", None, Some("f2/wE4q74E6zIJEtWaHKaf5wv/H5QzzpXusqGemxURZJ"));
+
+        assert_eq!(auth_str, r#"Digest username="Mufasa", realm="http-auth@example.org", nonce="7ypf/xlj9XXwfDPEoM4URrv/xwf94BcCAzFZH4GiTo0v", uri="/dir/index.html", qop=auth, algorithm=SHA-256, nc=00000001, cnonce="f2/wE4q74E6zIJEtWaHKaf5wv/H5QzzpXusqGemxURZJ", response="753927fa0e85d155564e2e272a28d1802ca10daf4496794697cf8db5856cb6c1", opaque="FQhe/qaU925kfnzjCev0ciny7QMkPqMAFRtzCUYo5tdS""#);
     }
 }
