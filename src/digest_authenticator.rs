@@ -363,12 +363,10 @@ impl DigestScheme {
         let mut hasher = T::new();
         hasher.input(ha1);
         hasher.input(":");
-        println!("{}:{}:{}", ha1, self.nonce(), ha2);
         hasher.input(self.nonce());
         hasher.input(":");
         if self.qop != QualityOfProtection::None {
             let qop_data = self.qop_data.as_ref().unwrap();
-            println!("Using QOP: {}", qop_data.qop.to_str());
             hasher.input(&qop_data.count_str);
             hasher.input(":");
             hasher.input(&qop_data.cnonce);
