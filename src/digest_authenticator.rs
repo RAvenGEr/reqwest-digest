@@ -31,7 +31,7 @@ enum QualityOfProtection {
 }
 
 impl QualityOfProtection {
-    fn to_str(&self) -> &'static str {
+    fn to_str(self) -> &'static str {
         match self {
             QualityOfProtection::Auth => "auth",
             QualityOfProtection::AuthInt => "auth-int",
@@ -150,7 +150,7 @@ impl FromStr for DigestScheme {
         }
 
         let mut state = KeyVal::PreKey;
-        let mut key: String = "".to_owned();
+        let mut key: &str = "";
         let mut k_pos = StrPosition::default();
         let mut v_pos = StrPosition::default();
 
@@ -164,24 +164,20 @@ impl FromStr for DigestScheme {
                 }
                 KeyVal::Key => {
                     if ch_ind.1 != '=' {
-                        if !ch_ind.1.is_ascii_whitespace() {
-                            k_pos.end = ch_ind.0 + 1;
-                        }
                         continue;
                     }
-                    // ignore '='
-                    key = k_pos.to_str(auth).to_lowercase();
+                    k_pos.end = ch_ind.0;
+                    key = k_pos.to_str(auth);
                     state = KeyVal::PreVal;
+                    k_pos = StrPosition::default();
                 }
                 KeyVal::PreVal => {
-                    if !ch_ind.1.is_ascii_whitespace() {
-                        if ch_ind.1 == '"' {
-                            v_pos.start = ch_ind.0 + 1;
-                            state = KeyVal::QuoteVal;
-                        } else {
-                            v_pos.start = ch_ind.0;
-                            state = KeyVal::Key;
-                        }
+                    if ch_ind.1 == '"' {
+                        v_pos.start = ch_ind.0 + 1;
+                        state = KeyVal::QuoteVal;
+                    } else {
+                        v_pos.start = ch_ind.0;
+                        state = KeyVal::Val;
                     }
                 }
                 KeyVal::QuoteVal => {
@@ -189,22 +185,25 @@ impl FromStr for DigestScheme {
                         continue;
                     }
                     v_pos.end = ch_ind.0;
+                    let is_last = ch_ind.0 == auth.len() - 1;
+                    if is_last {
+                        res.process_header_value(&key, auth, v_pos);
+                    }
                     state = KeyVal::Val;
-                    res.process_header_value(&key, auth, v_pos);
                 }
                 KeyVal::Val => {
-                    if ch_ind.0 != auth.len() - 1 && ch_ind.1 != ',' {
+                    let is_last = ch_ind.0 == auth.len() - 1;
+                    if !is_last && ch_ind.1 != ',' {
                         if v_pos.end == 0 && ch_ind.1.is_ascii_whitespace() {
                             v_pos.end = ch_ind.0;
-                            res.process_header_value(&key, auth, v_pos);
                         }
                         continue;
                     }
                     if v_pos.end == 0 {
                         v_pos.end = ch_ind.0;
-                        res.process_header_value(&key, auth, v_pos);
                     }
-                    v_pos.end = 0;
+                    res.process_header_value(&key, auth, v_pos);
+                    v_pos = StrPosition::default();
                     state = KeyVal::PreKey;
                 }
             }
@@ -311,35 +310,41 @@ impl DigestScheme {
     }
 
     fn process_header_value(&mut self, key: &str, auth: &str, val_pos: StrPosition) {
-        if key == "nonce" {
+        if key.eq_ignore_ascii_case("nonce") {
             self.nonce = val_pos;
-        } else if key == "realm" {
+        } else if key.eq_ignore_ascii_case("realm") {
             self.realm = val_pos;
-        } else if key == "domain" {
+        } else if key.eq_ignore_ascii_case("domain") {
             // @todo solve splitting
             // res.domain = Some(value.as_str().split(' ').collect());
-        } else if key == "opaque" {
+        } else if key.eq_ignore_ascii_case("opaque") {
             self.opaque = val_pos;
-        } else if key == "stale" && val_pos.to_str(auth).to_lowercase() == "true" {
+        } else if key.eq_ignore_ascii_case("stale")
+            && val_pos.to_str(auth).eq_ignore_ascii_case("true")
+        {
             self.stale = true;
-        } else if key == "algorithm" {
-            let alg_str = val_pos.to_str(auth).to_lowercase();
-            if alg_str == "md5-sess" {
+        } else if key.eq_ignore_ascii_case("algorithm") {
+            let alg_str = val_pos.to_str(auth);
+            if alg_str.eq_ignore_ascii_case("md5-sess") {
                 self.session = true;
-            } else if alg_str == "sha-256" {
+            } else if alg_str.eq_ignore_ascii_case("sha-256") {
                 self.algorithm = DigestAlgorithm::SHA256;
-            } else if alg_str == "sha-256-sess" {
+            } else if alg_str.eq_ignore_ascii_case("sha-256-sess") {
                 self.algorithm = DigestAlgorithm::SHA256;
                 self.session = true;
             }
-        } else if key == "qop" {
-            let qop_str = val_pos.to_str(auth).to_lowercase();
-            if qop_str.contains(QualityOfProtection::AuthInt.to_str()) {
+        } else if key.eq_ignore_ascii_case("qop") {
+            let qop_str = val_pos.to_str(auth);
+            if qop_str.contains(QualityOfProtection::AuthInt.to_str())
+                || qop_str.eq_ignore_ascii_case(QualityOfProtection::AuthInt.to_str())
+            {
                 self.qop = QualityOfProtection::AuthInt;
             } else {
                 self.qop = QualityOfProtection::Auth;
             }
-        } else if key == "userhash" && val_pos.to_str(auth).to_lowercase() == "true" {
+        } else if key.eq_ignore_ascii_case("userhash")
+            && val_pos.to_str(auth).eq_ignore_ascii_case("true")
+        {
             self.userhash = true;
         }
     }
