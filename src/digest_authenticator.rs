@@ -48,12 +48,7 @@ struct QualityOfProtectionData {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DigestParseError {
-    kind: DigestParseErrorKind,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DigestParseErrorKind {
+pub enum DigestParseError {
     Empty,
     MissingDigest,
     MissingRealm,
@@ -61,15 +56,12 @@ pub enum DigestParseErrorKind {
 }
 
 impl DigestParseError {
-    fn new(kind: DigestParseErrorKind) -> Self {
-        Self { kind }
-    }
     fn description(&self) -> &str {
-        match self.kind {
-            DigestParseErrorKind::Empty => "cannot parse Digest scheme from empty string",
-            DigestParseErrorKind::MissingDigest => "string does not start with \"Digest \"",
-            DigestParseErrorKind::MissingNonce => "Digest scheme must contain a nonce value",
-            DigestParseErrorKind::MissingRealm => "Digest scheme must contain a realm value",
+        match self {
+            DigestParseError::Empty => "cannot parse Digest scheme from empty string",
+            DigestParseError::MissingDigest => "string does not start with \"Digest \"",
+            DigestParseError::MissingNonce => "Digest scheme must contain a nonce value",
+            DigestParseError::MissingRealm => "Digest scheme must contain a realm value",
         }
     }
 }
@@ -117,11 +109,11 @@ impl FromStr for DigestScheme {
 
     fn from_str(auth: &str) -> Result<Self, Self::Err> {
         if auth.is_empty() {
-            return Err(DigestParseError::new(DigestParseErrorKind::Empty));
+            return Err(DigestParseError::Empty);
         }
 
         if &auth[..6].to_lowercase() != "digest" {
-            return Err(DigestParseError::new(DigestParseErrorKind::MissingDigest));
+            return Err(DigestParseError::MissingDigest);
         }
 
         let mut res = Self {
@@ -211,9 +203,8 @@ impl FromStr for DigestScheme {
 
         match (res.nonce.is_valid(), res.realm.is_valid()) {
             (true, true) => Ok(res),
-            (true, false) => Err(DigestParseError::new(DigestParseErrorKind::MissingRealm)),
-            (false, true) => Err(DigestParseError::new(DigestParseErrorKind::MissingNonce)),
-            (false, false) => Err(DigestParseError::new(DigestParseErrorKind::MissingNonce)),
+            (true, false) => Err(DigestParseError::MissingRealm),
+            (_, _) => Err(DigestParseError::MissingNonce),
         }
     }
 }
@@ -521,3 +512,4 @@ mod tests {
         );
     }
 }
+

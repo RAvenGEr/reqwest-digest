@@ -73,14 +73,14 @@ impl AuthenticatingRequestBuilder {
                             let body = response.text().await.ok();
                             let mut auth_str = "".to_owned();
 
-                            if let Ok(mut auth) = a.parse::<DigestScheme>() {
+                            if let Ok(mut auth) = a.parse::<DigestScheme>() {                                
                                 auth_str = auth.generate_auth_string(
                                     self.client.username.as_ref().unwrap(),
                                     self.client.password.as_ref().unwrap(),
                                     "GET",
                                     &url[Position::BeforePath..],
                                     body.as_ref().map(|s| &**s),
-                                    None
+                                    None,
                                 );
                             }
                             return self
