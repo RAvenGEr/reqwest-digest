@@ -1,6 +1,4 @@
-mod digest_authenticator;
-pub use digest_authenticator::DigestScheme;
-
+use digest_access::DigestAccess;
 use reqwest::header::{HeaderName, HeaderValue, AUTHORIZATION};
 use reqwest::IntoUrl;
 use std::convert::TryFrom;
@@ -68,13 +66,18 @@ impl AuthenticatingRequestBuilder {
             match self.request.build() {
                 Ok(req) => match self.client.client.execute(req).await {
                     Ok(response) => {
-                        if let Some(a) = DigestScheme::www_authenticate_string(response.headers()) {
+                        if let Some(a) =
+                            digest_access::digest_authenticate_from_headers(response.headers())
+                        {
+                            if self.client.username.is_none() || self.client.password.is_none() {
+                                return Ok(response);
+                            }
                             let url = response.url().to_owned();
                             let body = response.text().await.ok();
                             let mut auth_str = "".to_owned();
 
-                            if let Ok(mut auth) = a.parse::<DigestScheme>() {                                
-                                auth_str = auth.generate_auth_string(
+                            if let Ok(mut auth) = a.parse::<DigestAccess>() {
+                                auth_str = auth.generate_authentication(
                                     self.client.username.as_ref().unwrap(),
                                     self.client.password.as_ref().unwrap(),
                                     "GET",
@@ -104,4 +107,25 @@ impl AuthenticatingRequestBuilder {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn httpbin() {
+        let user = "FredJones";
+        let password = "P@55w0rd";
+        let uri = format!(
+            "http://httpbin.org/digest-auth/auth/{}/{}/sha256",
+            user, password
+        );
+        let unauthorised_client = crate::AuthenticatingClient::new();
+
+        if let Ok(stream) = unauthorised_client.get(&uri).send().await {
+            assert_eq!(stream.status(), http::StatusCode::UNAUTHORIZED);
+        }
+
+        let mut client = crate::AuthenticatingClient::new();
+        client.set_username(user);
+        client.set_password(password);
+        if let Ok(stream) = client.get(&uri).send().await {
+            assert_eq!(stream.status(), http::StatusCode::OK);
+        }
+    }
 }
