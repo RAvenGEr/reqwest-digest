@@ -36,8 +36,8 @@ impl AuthenticatingClient {
         if !sanitised_url.username().is_empty() || sanitised_url.password().is_some() {
             self.set_username(sanitised_url.username());
             self.password = sanitised_url.password().map(|pass| pass.to_owned());
-            sanitised_url.set_username("");
-            sanitised_url.set_password(None);
+            let _ = sanitised_url.set_username("");
+            let _ = sanitised_url.set_password(None);
         }
         AuthenticatingRequestBuilder::new(self.clone(), self.client.get(sanitised_url))
     }
@@ -61,65 +61,116 @@ impl AuthenticatingRequestBuilder {
         }
     }
 
-    pub fn send(self) -> impl Future<Output = Result<reqwest::Response, reqwest::Error>> {
-        async {
-            match self.request.build() {
-                Ok(req) => match self.client.client.execute(req).await {
-                    Ok(response) => {
-                        if let Some(a) =
-                            digest_access::digest_authenticate_from_headers(response.headers())
+    pub async fn send(self) -> reqwest::Result<reqwest::Response> {
+        match self.request.build() {
+            Ok(req) => match self.client.client.execute(req).await {
+                Ok(response) => {
+                    if self.client.username.is_some() && self.client.password.is_some() {
+                        if let Ok(mut auth) =
+                            digest_access::DigestAccess::try_from(response.headers())
                         {
-                            if self.client.username.is_none() || self.client.password.is_none() {
-                                return Ok(response);
-                            }
                             let url = response.url().to_owned();
-                            let body = response.text().await.ok();
-                            let mut auth_str = "".to_owned();
+                            let body = response.bytes().await;
+                            let body_slice: Option<&[u8]> = match &body {
+                                Ok(b) => Some(b),
+                                Err(_) => None,
+                            };
 
-                            if let Ok(mut auth) = a.parse::<DigestAccess>() {
-                                auth_str = auth.generate_authentication(
-                                    self.client.username.as_ref().unwrap(),
-                                    self.client.password.as_ref().unwrap(),
+                            auth.set_username(self.client.username.as_ref().unwrap());
+                            auth.set_password(self.client.password.as_ref().unwrap());
+                            let a = auth
+                                .generate_authorization(
                                     "GET",
                                     &url[Position::BeforePath..],
-                                    body.as_ref().map(|s| &**s),
+                                    body_slice,
                                     None,
-                                );
-                            }
+                                )
+                                .unwrap();
                             return self
                                 .client
                                 .client
                                 .get(url)
-                                .header(AUTHORIZATION, auth_str)
+                                .header(AUTHORIZATION, a)
                                 .send()
                                 .await;
                         }
-                        Ok(response)
                     }
-                    Err(err) => Err(err),
-                },
-
+                    Ok(response)
+                }
                 Err(err) => Err(err),
-            }
+            },
+            Err(err) => Err(err),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+
+    fn httpbin_uri(auth: &str, user: &str, password: &str, algorithm: Option<&str>) -> String {
+        let mut uri = format!(
+            "http://httpbin.org/digest-auth/{}/{}/{}",
+            auth, user, password
+        );
+        if let Some(algo) = algorithm {
+            uri.push('/');
+            uri.push_str(algo);
+        }
+        uri
+    }
+
     #[tokio::test]
-    async fn httpbin() {
+    async fn httpbin_auth() {
         let user = "FredJones";
         let password = "P@55w0rd";
-        let uri = format!(
-            "http://httpbin.org/digest-auth/auth/{}/{}/sha256",
-            user, password
-        );
+        let uri = httpbin_uri("auth", user, password, None);
         let unauthorised_client = crate::AuthenticatingClient::new();
 
         if let Ok(stream) = unauthorised_client.get(&uri).send().await {
             assert_eq!(stream.status(), http::StatusCode::UNAUTHORIZED);
         }
+
+        let mut client = crate::AuthenticatingClient::new();
+        client.set_username(user);
+        client.set_password(password);
+        if let Ok(stream) = client.get(&uri).send().await {
+            assert_eq!(stream.status(), http::StatusCode::OK);
+        }
+    }
+
+    #[tokio::test]
+    async fn httpbin_auth_sha256() {
+        let user = "FredJones";
+        let password = "P@55w0rd";
+        let uri = httpbin_uri("auth", user, password, Some("sha256"));
+
+        let mut client = crate::AuthenticatingClient::new();
+        client.set_username(user);
+        client.set_password(password);
+        if let Ok(stream) = client.get(&uri).send().await {
+            assert_eq!(stream.status(), http::StatusCode::OK);
+        }
+    }
+
+    #[tokio::test]
+    async fn httpbin_authint_sha256() {
+        let user = "FredJones";
+        let password = "P@55w0rd";
+        let uri = httpbin_uri("auth-int", user, password, Some("sha256"));
+
+        let mut client = crate::AuthenticatingClient::new();
+        client.set_username(user);
+        client.set_password(password);
+        if let Ok(stream) = client.get(&uri).send().await {
+            assert_eq!(stream.status(), http::StatusCode::OK);
+        }
+    }
+
+    #[tokio::test]
+    async fn httpbin_auth_md5() {
+        let user = "FredJones";
+        let password = "P@55w0rd";
+        let uri = httpbin_uri("auth", user, password, Some("md5"));
 
         let mut client = crate::AuthenticatingClient::new();
         client.set_username(user);
