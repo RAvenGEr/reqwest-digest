@@ -1,5 +1,4 @@
-use http::header::WWW_AUTHENTICATE;
-use reqwest::header::{HeaderName, HeaderValue, AUTHORIZATION};
+use reqwest::header::{HeaderName, HeaderValue, AUTHORIZATION, WWW_AUTHENTICATE};
 use reqwest::IntoUrl;
 use std::convert::TryFrom;
 use url::Position;
@@ -152,6 +151,8 @@ impl AuthenticatingRequestBuilder {
 
 #[cfg(test)]
 mod tests {
+    use reqwest::StatusCode;
+
     use crate::*;
 
     fn httpbin_uri(auth: &str, user: &str, password: &str, algorithm: Option<&str>) -> String {
@@ -174,14 +175,14 @@ mod tests {
         let unauthorised_client = AuthenticatingClient::default();
 
         if let Ok(stream) = unauthorised_client.get(&uri).send().await {
-            assert_eq!(stream.status(), http::StatusCode::UNAUTHORIZED);
+            assert_eq!(stream.status(), StatusCode::UNAUTHORIZED);
         }
 
         let mut client = AuthenticatingClient::default();
         client.set_username(user);
         client.set_password(password);
         if let Ok(stream) = client.get(&uri).send().await {
-            assert_eq!(stream.status(), http::StatusCode::OK);
+            assert_eq!(stream.status(), StatusCode::OK);
         }
     }
 
@@ -195,7 +196,7 @@ mod tests {
         client.set_username(user);
         client.set_password(password);
         if let Ok(stream) = client.get(&uri).send().await {
-            assert_eq!(stream.status(), http::StatusCode::OK);
+            assert_eq!(stream.status(), StatusCode::OK);
         }
     }
 
@@ -209,7 +210,7 @@ mod tests {
         client.set_username(user);
         client.set_password(password);
         if let Ok(stream) = client.get(&uri).send().await {
-            assert_eq!(stream.status(), http::StatusCode::OK);
+            assert_eq!(stream.status(), StatusCode::OK);
         }
     }
 
@@ -223,7 +224,7 @@ mod tests {
         client.set_username(user);
         client.set_password(password);
         if let Ok(stream) = client.get(&uri).send().await {
-            assert_eq!(stream.status(), http::StatusCode::OK);
+            assert_eq!(stream.status(), StatusCode::OK);
         }
     }
 
@@ -243,23 +244,23 @@ mod tests {
         client.set_username(user);
         client.set_password(password);
         if let Ok(stream) = client.get(&uri).send().await {
-            assert_ne!(stream.status(), http::StatusCode::OK);
+            assert_ne!(stream.status(), StatusCode::OK);
         }
 
         // Basic fallback not enabled, url does contain username and password
         let client = crate::AuthenticatingClient::default();
         if let Ok(stream) = client.get(&uri_with_auth).send().await {
             // Still not OK response
-            assert_ne!(stream.status(), http::StatusCode::OK);
+            assert_ne!(stream.status(), StatusCode::OK);
         }
 
         // Enable basic fallback, use auth in uri
         let client = crate::AuthenticatingClient::new(true);
         if let Ok(stream) = client.get(&uri_with_auth).send().await {
             // OK response
-            assert_eq!(stream.status(), http::StatusCode::OK);
+            assert_eq!(stream.status(), StatusCode::OK);
         }
-        
+
         // Enable basic fallback, set auth in client
         let mut client = crate::AuthenticatingClient::default();
         client.set_username(user);
@@ -267,7 +268,7 @@ mod tests {
         client.set_basic_fallback(true);
         if let Ok(stream) = client.get(&uri).send().await {
             // OK response
-            assert_eq!(stream.status(), http::StatusCode::OK);
+            assert_eq!(stream.status(), StatusCode::OK);
         }
     }
 }
