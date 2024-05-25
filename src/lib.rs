@@ -1,6 +1,7 @@
 use reqwest::header::{HeaderName, HeaderValue, AUTHORIZATION, WWW_AUTHENTICATE};
 use reqwest::IntoUrl;
 use std::convert::TryFrom;
+use std::time::Duration;
 use url::Position;
 
 #[derive(Default, Clone)]
@@ -74,6 +75,14 @@ impl AuthenticatingRequestBuilder {
     {
         Self {
             request: self.request.header(key, value),
+            client: self.client,
+        }
+    }
+
+    /// Enables a request timeout
+    pub fn timeout(self, timeout: Duration) -> Self {
+        Self {
+            request: self.request.timeout(timeout),
             client: self.client,
         }
     }

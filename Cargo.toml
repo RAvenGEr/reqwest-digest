@@ -1,6 +1,6 @@
 [package]
 name = "reqwest-digest"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["David Webb <david@dpwlabs.com>"]
 edition = "2021"
 
