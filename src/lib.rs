@@ -1,10 +1,10 @@
-use reqwest::header::{HeaderName, HeaderValue, AUTHORIZATION, WWW_AUTHENTICATE};
 use reqwest::IntoUrl;
+use reqwest::header::{AUTHORIZATION, HeaderName, HeaderValue, WWW_AUTHENTICATE};
 use std::convert::TryFrom;
 use std::time::Duration;
 use url::Position;
 
-#[derive(Default, Clone)]
+#[derive(Clone, Default)]
 pub struct AuthenticatingClient {
     username: Option<String>,
     password: Option<String>,
@@ -18,21 +18,34 @@ pub struct AuthenticatingRequestBuilder {
 }
 
 impl AuthenticatingClient {
-    pub fn new(basic_fallback: bool) -> Self {
-        Self {
-            username: None,
-            password: None,
-            basic_fallback,
-            client: reqwest::Client::default(),
-        }
-    }
-
-    pub fn set_username<S: Into<String>>(&mut self, user: S) {
+    pub fn with_username<S: Into<String>>(mut self, user: S) -> Self {
         self.username = Some(user.into());
+        self
     }
 
-    pub fn set_password<S: Into<String>>(&mut self, pass: S) {
+    pub fn with_password<S: Into<String>>(mut self, pass: S) -> Self {
         self.password = Some(pass.into());
+        self
+    }
+
+    pub fn with_basic_fallback(mut self) -> Self {
+        self.basic_fallback = true;
+        self
+    }
+
+    pub fn set_username<S: Into<String>>(&mut self, user: Option<S>) -> &mut Self {
+        self.username = user.map(|user| user.into());
+        self
+    }
+
+    pub fn set_password<S: Into<String>>(&mut self, pass: S) -> &mut Self {
+        self.password = Some(pass.into());
+        self
+    }
+
+    pub fn set_basic_fallback(mut self, fallback: bool) -> Self {
+        self.basic_fallback = fallback;
+        self
     }
 
     pub fn clear_credentials(&mut self) {
@@ -40,16 +53,12 @@ impl AuthenticatingClient {
         self.password = None;
     }
 
-    pub fn set_basic_fallback(&mut self, enable: bool) {
-        self.basic_fallback = enable;
-    }
-
     pub fn get<U: IntoUrl>(mut self, url: U) -> AuthenticatingRequestBuilder {
         // Don't leak username and password via basic auth, if we can avoid it
         let mut sanitised_url = url.into_url().unwrap();
         if !sanitised_url.username().is_empty() || sanitised_url.password().is_some() {
             if self.username.is_none() {
-                self.set_username(sanitised_url.username());
+                self.username = Some(sanitised_url.username().to_string());
             }
             if self.password.is_none() {
                 self.password = sanitised_url.password().map(|pass| pass.to_owned());
@@ -187,9 +196,9 @@ mod tests {
             assert_eq!(stream.status(), StatusCode::UNAUTHORIZED);
         }
 
-        let mut client = AuthenticatingClient::default();
-        client.set_username(user);
-        client.set_password(password);
+        let client = AuthenticatingClient::default()
+            .with_username(user)
+            .with_password(password);
         if let Ok(stream) = client.get(&uri).send().await {
             assert_eq!(stream.status(), StatusCode::OK);
         }
@@ -201,9 +210,9 @@ mod tests {
         let password = "P@55w0rd";
         let uri = httpbin_uri("auth", user, password, Some("sha256"));
 
-        let mut client = AuthenticatingClient::default();
-        client.set_username(user);
-        client.set_password(password);
+        let client = AuthenticatingClient::default()
+            .with_username(user)
+            .with_password(password);
         if let Ok(stream) = client.get(&uri).send().await {
             assert_eq!(stream.status(), StatusCode::OK);
         }
@@ -215,9 +224,9 @@ mod tests {
         let password = "P@55w0rd";
         let uri = httpbin_uri("auth-int", user, password, Some("sha256"));
 
-        let mut client = AuthenticatingClient::default();
-        client.set_username(user);
-        client.set_password(password);
+        let client = AuthenticatingClient::default()
+            .with_username(user)
+            .with_password(password);
         if let Ok(stream) = client.get(&uri).send().await {
             assert_eq!(stream.status(), StatusCode::OK);
         }
@@ -229,9 +238,9 @@ mod tests {
         let password = "P@55w0rd";
         let uri = httpbin_uri("auth", user, password, Some("md5"));
 
-        let mut client = AuthenticatingClient::default();
-        client.set_username(user);
-        client.set_password(password);
+        let client = AuthenticatingClient::default()
+            .with_username(user)
+            .with_password(password);
         if let Ok(stream) = client.get(&uri).send().await {
             assert_eq!(stream.status(), StatusCode::OK);
         }
@@ -249,32 +258,32 @@ mod tests {
         );
 
         // Basic fallback not enabled, url does not contain username or password
-        let mut client = AuthenticatingClient::new(false);
-        client.set_username(user);
-        client.set_password(password);
+        let client = AuthenticatingClient::default()
+            .with_username(user)
+            .with_password(password);
         if let Ok(stream) = client.get(&uri).send().await {
             assert_ne!(stream.status(), StatusCode::OK);
         }
 
         // Basic fallback not enabled, url does contain username and password
-        let client = crate::AuthenticatingClient::default();
+        let client = AuthenticatingClient::default();
         if let Ok(stream) = client.get(&uri_with_auth).send().await {
             // Still not OK response
             assert_ne!(stream.status(), StatusCode::OK);
         }
 
         // Enable basic fallback, use auth in uri
-        let client = crate::AuthenticatingClient::new(true);
+        let client = AuthenticatingClient::default().with_basic_fallback();
         if let Ok(stream) = client.get(&uri_with_auth).send().await {
             // OK response
             assert_eq!(stream.status(), StatusCode::OK);
         }
 
         // Enable basic fallback, set auth in client
-        let mut client = crate::AuthenticatingClient::default();
-        client.set_username(user);
-        client.set_password(password);
-        client.set_basic_fallback(true);
+        let client = AuthenticatingClient::default()
+            .with_username(user)
+            .with_password(password)
+            .with_basic_fallback();
         if let Ok(stream) = client.get(&uri).send().await {
             // OK response
             assert_eq!(stream.status(), StatusCode::OK);

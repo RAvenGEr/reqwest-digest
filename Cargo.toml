@@ -1,17 +1,25 @@
 [package]
 name = "reqwest-digest"
-version = "0.5.1"
+version = "0.6.0"
 authors = ["David Webb <david@dpwlabs.com>"]
-edition = "2021"
+edition = "2024"
+license = "MIT or Apache 2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 digest-access = "0.3"
 http = "1"
 reqwest = { version = "0.12", default-features = false, features = [
-    "rustls-tls",
+    "charset",
+    "http2",
+    "macos-system-configuration",
 ] }
 url = "2.5"
+
+[features]
+default = ["rustls-native-roots"]
+rustls-no-provider = ["reqwest/rustls-tls-no-provider"]
+rustls-native-roots = ["reqwest/rustls-tls-native-roots"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
